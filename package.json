@@ -1,0 +1,27 @@
+{
+  "name": "gatherly",
+  "version": "1.0.0",
+  "description": "Gatherly - Full Stack Event Management Platform built with React, Node.js, Express and MongoDB",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd Frontendd && npm run dev",
+    "seed": "cd backend && npm run seed",
+    "install:all": "cd backend && npm install && cd ../Frontendd && npm install"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "compression": "^1.8.1"
+  },
+  "keywords": [
+    "mern",
+    "event-management",
+    "react",
+    "express",
+    "mongodb", 
+    "vite"
+  ],
+  "author": "Mohit Chaudhary",
+  "license": "MIT",
+  "devDependencies": {}
+}
