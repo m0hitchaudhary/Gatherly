@@ -16,7 +16,9 @@ import { API_BASE_URL } from '../../config';
 const SEARCH_DEBOUNCE_MS = 150;
 
 export default function OrganizerDashboard() {
-    const { user } = useAuth();
+    // const { user } = useAuth();
+    // Make sure it looks like this:
+    const { user, loading: authLoading } = useAuth();
     const navigate = useNavigate();
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -54,6 +56,14 @@ export default function OrganizerDashboard() {
     });
 
     const mountedRef = useRef(true);
+    const loadingRef = useRef(true);
+
+    const setLoadingSafe = (v) => {
+        if (mountedRef.current) {
+            setLoading(v);
+            loadingRef.current = v;
+        }
+    };
 
     useEffect(() => {
         return () => {
@@ -106,55 +116,146 @@ export default function OrganizerDashboard() {
         }
     };
 
+    // const fetchMyEvents = useCallback(async () => {
+    //     try {
+    //         const token = localStorage.getItem('token');
+
+    //         const res = await fetch(`${API_BASE_URL}/api/events`, {
+    //             headers: { Authorization: `Bearer ${token}` }
+    //         });
+    //         if (res.ok && mountedRef.current) {
+    //             const data = await res.json();
+    //             // Filter events where the organizer matches the current user
+    //             // Adjust logic based on how your backend returns data (populated organizer object vs id)
+    //             const myEvents = (data.events || []).filter(
+    //                 e => e.organizer?._id === user?.id || e.organizer === user?.id || e.organizerId === user?.id
+    //             );
+
+    //             setEvents(myEvents);
+    //             calculateStats(myEvents);
+    //             // Fetch co-organized events
+    //             try {
+    //                 const coRes = await fetch(`${API_BASE_URL}/api/events`, {
+    //                     headers: { Authorization: `Bearer ${token}` }
+    //                 });
+    //                 if (coRes.ok) {
+    //                     const coData = await coRes.json();
+    //                     const coEvents = (coData.events || []).filter(
+    //                         e => e.organizer?._id !== user?.id && e.organizer !== user?.id &&
+    //                         (e.coOrganizers || []).some(co => co._id === user?.id || co === user?.id)
+    //                     ).map(e => ({ ...e, _isCoOrganized: true }));
+    //                     if (coEvents.length > 0) setEvents(prev => [...prev, ...coEvents]);
+    //                 }
+    //             } catch (_) {}
+    //         }
+    //     } catch (error) {
+    //         console.error("Failed to fetch events", error);
+    //     } finally {
+    //         if (mountedRef.current) {
+    //             setLoading(false);
+    //         }
+    //     }
+    // }, [user]);
+
     const fetchMyEvents = useCallback(async () => {
-        try {
-            const token = localStorage.getItem('token');
+    if (!user) {
+        setLoadingSafe(false);
+        return;
+    }
 
-            const res = await fetch(`${API_BASE_URL}/api/events`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok && mountedRef.current) {
-                const data = await res.json();
-                // Filter events where the organizer matches the current user
-                // Adjust logic based on how your backend returns data (populated organizer object vs id)
-                const myEvents = (data.events || []).filter(
-                    e => e.organizer?._id === user?.id || e.organizer === user?.id || e.organizerId === user?.id
-                );
+    // ensure spinner is shown when we start fetching
+    setLoadingSafe(true);
 
-                setEvents(myEvents);
-                calculateStats(myEvents);
-                // Fetch co-organized events
-                try {
-                    const coRes = await fetch(`${API_BASE_URL}/api/events`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    if (coRes.ok) {
-                        const coData = await coRes.json();
-                        const coEvents = (coData.events || []).filter(
-                            e => e.organizer?._id !== user?.id && e.organizer !== user?.id &&
-                            (e.coOrganizers || []).some(co => co._id === user?.id || co === user?.id)
-                        ).map(e => ({ ...e, _isCoOrganized: true }));
-                        if (coEvents.length > 0) setEvents(prev => [...prev, ...coEvents]);
-                    }
-                } catch (_) {}
-            }
-        } catch (error) {
-            console.error("Failed to fetch events", error);
+    try {
+        const token = localStorage.getItem('token');
+        const userId = user?.id || user?._id;
+
+        // Add a safety timeout (e.g., 5 seconds) so it never hangs infinitely
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const res = await fetch(`${API_BASE_URL}/api/events`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (res.ok && mountedRef.current) {
+            const data = await res.json();
+            
+            const myEvents = (data.events || []).filter(
+                e => e.organizer?._id === userId || e.organizer === userId || e.organizerId === userId
+            );
+
+            setEvents(myEvents);
+            calculateStats(myEvents);
+
+            // Fetch co-organized events safely without blocking if it fails
+            try {
+                const coRes = await fetch(`${API_BASE_URL}/api/events`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (coRes.ok) {
+                    const coData = await coRes.json();
+                    const coEvents = (coData.events || []).filter(
+                        e => e.organizer?._id !== userId && e.organizer !== userId &&
+                        (e.coOrganizers || []).some(co => co._id === userId || co === userId)
+                    ).map(e => ({ ...e, _isCoOrganized: true }));
+                    
+                    if (coEvents.length > 0) setEvents(prev => [...prev, ...coEvents]);
+                }
+            } catch (_) {}
+        }
+    } catch (error) {
+        console.error("Failed to fetch events (or timed out)", error);
         } finally {
-            if (mountedRef.current) {
-                setLoading(false);
-            }
+        // 🔥 ULTIMATE FAIL-SAFE: This ALWAYS runs, guaranteeing the spinner dies
+        if (mountedRef.current) {
+            setLoadingSafe(false);
         }
-    }, [user]);
+    }
+}, [user]);
 
-    useEffect(() => {
+    // useEffect(() => {
+    //     document.title = 'Organizer Dashboard | Event.One';
+    //     if (user) {
+    //         (async () => {
+    //             await fetchMyEvents();
+    //         })();
+    //     }
+    // }, [user, fetchMyEvents]);
+useEffect(() => {
         document.title = 'Organizer Dashboard | Event.One';
-        if (user) {
-            (async () => {
-                await fetchMyEvents();
-            })();
+        
+        // 1. If AuthContext is still loading, keep waiting
+        if (authLoading) {
+            setLoadingSafe(true);
+            return;
         }
-    }, [user, fetchMyEvents]);
+
+        // 2. Auth is done. If we have a user, fetch events. Also create a hard fail-safe timeout
+        let failTimeout;
+        if (user) {
+            // start fetch and ensure loading state
+            setLoadingSafe(true);
+            fetchMyEvents();
+
+            // Hard fail-safe: if nothing settles in 2s, force-hide the spinner
+            failTimeout = setTimeout(() => {
+                if (mountedRef.current && loadingRef.current) {
+                    setLoadingSafe(false);
+                }
+            }, 2000);
+        } else {
+            // 3. No user found, stop loading immediately
+            setLoadingSafe(false);
+        }
+
+        return () => {
+            if (failTimeout) clearTimeout(failTimeout);
+        };
+    }, [user, authLoading, fetchMyEvents]);
 
     const handleDownloadCSV = (eventId) => {
         const token = localStorage.getItem('token');

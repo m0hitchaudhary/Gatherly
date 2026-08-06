@@ -17,7 +17,8 @@ export const AuthProvider = ({ children }) => {
             });
             if (response.ok && mountedRef.current) {
                 const userData = await response.json();
-                setUser(userData.user);
+                // 👇 Handles whether the backend sends { user: { ... } } or just { ... } directly
+                setUser(userData.user || userData);
             } else if (!response.ok) {
                 localStorage.removeItem('token');
                 if (mountedRef.current) {
@@ -59,9 +60,17 @@ export const AuthProvider = ({ children }) => {
         };
     }, []);
 
-    const login = (token, userData) => {
+    // const login = (token, userData) => {
+    //     localStorage.setItem('token', token);
+    //     setUser(userData);
+    // };
+
+    const login = async (token, userData) => {
         localStorage.setItem('token', token);
-        setUser(userData);
+        if (userData) {
+            setUser(userData);
+        }
+        await fetchUser(token);
     };
 
     const logout = (navigate) => {
@@ -84,4 +93,3 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
-

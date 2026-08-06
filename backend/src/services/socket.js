@@ -10,7 +10,11 @@ export function getIO() {
 
 export function initSocket(server, clientOrigin) {
   ioInstance = new Server(server, {
-    cors: { origin: clientOrigin, credentials: true },
+    cors: { 
+      origin: clientOrigin || "http://localhost:5173", 
+      methods: ["GET", "POST"],
+      credentials: true 
+    },
   });
 
   ioInstance.on('connection', (socket) => {

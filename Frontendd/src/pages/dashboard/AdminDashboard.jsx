@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../config';
 
 export default function AdminDashboard() {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [pendingEvents, setPendingEvents] = useState([]);
     const [, setStats] = useState({ totalUsers: 0, totalEvents: 0, pendingCount: 0 });
     const [loading, setLoading] = useState(true);
@@ -22,6 +22,14 @@ export default function AdminDashboard() {
     const [rejectReason, setRejectReason] = useState('');
     const [rejectLoading, setRejectLoading] = useState(false);
     const mountedRef = useRef(true);
+    const loadingRef = useRef(true);
+
+    const setLoadingSafe = (v) => {
+        if (mountedRef.current) {
+            setLoading(v);
+            loadingRef.current = v;
+        }
+    };
 
     // Bulk action state
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -37,6 +45,8 @@ export default function AdminDashboard() {
     }, []);
 
     const fetchPendingEvents = useCallback(async () => {
+        // Ensure spinner shown while fetching
+        setLoadingSafe(true);
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE_URL}/api/admin/events/pending`, {
@@ -50,7 +60,7 @@ export default function AdminDashboard() {
             console.error("Failed to fetch pending events", error);
         } finally {
             if (mountedRef.current) {
-                setLoading(false);
+                setLoadingSafe(false);
             }
         }
     }, []);
@@ -102,15 +112,35 @@ export default function AdminDashboard() {
             if (activeTab === 'Pending Reviews') {
                 await fetchPendingEvents();
             } else if (activeTab === 'All Events & Management') {
+                // show loading while fetching large dataset
+                setLoadingSafe(true);
                 await fetchAllEvents();
+                setLoadingSafe(false);
             } else if (activeTab === 'User Management') {
+                setLoadingSafe(true);
                 await fetchUsers();
+                setLoadingSafe(false);
             }
             await fetchStats();
         };
 
+        // If auth is still resolving, keep spinner until it's done
+        if (authLoading) {
+            setLoadingSafe(true);
+            return () => { /* noop until auth settles */ };
+        }
+
         if (mounted) {
-            loadData();
+            // hard fail-safe: if loadData doesn't settle in 2s, hide spinner
+            let failTimeout = setTimeout(() => {
+                if (mountedRef.current && loadingRef.current) {
+                    setLoadingSafe(false);
+                }
+            }, 2000);
+
+            loadData().finally(() => {
+                if (failTimeout) clearTimeout(failTimeout);
+            });
         }
 
         return () => {
